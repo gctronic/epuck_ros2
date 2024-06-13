@@ -20,6 +20,7 @@ public:
     mTagName = declare_parameter("tag_name", "robot_tag");
     publisher_ = this->create_publisher<geometry_msgs::msg::PoseStamped>(mTagName, 10);
     timer_ = this->create_wall_timer(100ms, std::bind(&UwbPublisher::timer_callback, this));
+    RCLCPP_INFO(get_logger(), "UWB node has been initialized");
   }
 
 private:
@@ -37,7 +38,7 @@ private:
         pose.pose.position.x = uwb_pos.x;
         pose.pose.position.y = uwb_pos.y;
         pose.pose.position.z = uwb_pos.z;
-        RCLCPP_INFO(this->get_logger(), "UWB pos: [%5d,%5d,%5d,%3u]", uwb_pos.x, uwb_pos.y, uwb_pos.z, uwb_pos.qf);
+        //(this->get_logger(), "UWB pos: [%5d,%5d,%5d,%3u]", uwb_pos.x, uwb_pos.y, uwb_pos.z, uwb_pos.qf);
         publisher_->publish(pose);
     }
   }

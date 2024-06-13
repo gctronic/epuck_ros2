@@ -1,3 +1,0 @@
-<node pkg="epuck_ros2_driver" exec="driver" name="driver" namespace="gc"/>
-<node pkg="epuck_ros2_camera" exec="camera" name="camera" namespace="gc"/>
-<node pkg="epuck_ros2_uwb" exec="uwb_pub" name="uwb_pub" namespace="gc"/>

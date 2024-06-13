@@ -19,41 +19,35 @@
 import launch
 from launch.substitutions import LaunchConfiguration
 from launch import LaunchDescription
-#from launch_ros.actions import Node
-import launch_ros.actions
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
     use_camera = LaunchConfiguration('camera', default=False)
-    #use_uwb = LaunchConfiguration('uwb', default=False)
+    use_uwb = LaunchConfiguration('uwb', default=False)
 
-    driver = launch_ros.actions.Node(
+    driver = Node(
         package='epuck_ros2_driver',
         executable='driver',
-        output='screen',
-        name='driver',
-        emulate_tty=True,
-        noninteractive=False
+        output='screen'
     )
-    camera = launch_ros.actions.Node(
+    camera = Node(
         package='epuck_ros2_camera',
         executable='camera',
         output='screen',
-        name='camera',
-        emulate_tty=True,
-        noninteractive=False,
         condition=launch.conditions.IfCondition(use_camera)
     )
-    #uwb = launch_ros.actions.Node(
-    #    package='epuck_ros2_uwb',
-    #    executable='uwb_pub',
-    #    output='screen',
-    #   name='uwb',
-    #    condition=launch.conditions.IfCondition(use_uwb)
-    #)    
+    uwb = Node(
+        package='epuck_ros2_uwb',
+        executable='uwb_pub',
+        output='screen',
+        name='uwb',
+        parameters=[{"tag_name": "mytag"}],
+        condition=launch.conditions.IfCondition(use_uwb)
+    )    
 
     return LaunchDescription([
         driver,
-        camera
-    #    uwb
+        camera,
+        uwb
     ])
