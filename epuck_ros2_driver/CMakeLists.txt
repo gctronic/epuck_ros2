@@ -20,17 +20,23 @@ find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_library(WIRINGPI_LIBRARY NAMES wiringPi)
 
 add_executable(driver
   src/driver.cpp
   src/mpu9250.cpp
   src/vl53l0x/tof.c
+  src/bmm150/bmm150.c
+  src/bmm150/bmm150_common.c
 )
 target_include_directories(driver PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   src/vl53l0x
+  src/bmm150
 )
+
+target_link_libraries(driver ${WIRINGPI_LIBRARY})
 
 ament_target_dependencies(driver
   rclcpp

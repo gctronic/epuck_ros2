@@ -38,7 +38,7 @@ private:
         pose.pose.position.x = uwb_pos.x;
         pose.pose.position.y = uwb_pos.y;
         pose.pose.position.z = uwb_pos.z;
-        //(this->get_logger(), "UWB pos: [%5d,%5d,%5d,%3u]", uwb_pos.x, uwb_pos.y, uwb_pos.z, uwb_pos.qf);
+        //RCLCPP_INFO(get_logger(), "UWB pos: [%5d,%5d,%5d,%3u]", uwb_pos.x, uwb_pos.y, uwb_pos.z, uwb_pos.qf);
         publisher_->publish(pose);
     }
   }

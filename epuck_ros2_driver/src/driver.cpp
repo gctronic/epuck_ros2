@@ -35,6 +35,8 @@ extern "C" {
 
 extern "C" {
 #include "vl53l0x/tof.h"
+#include "bmm150/bmm150.h"
+#include "bmm150/bmm150_common.h"
 }
 
 #include "epuck_ros2_driver/i2c_wrapper.hpp"
@@ -48,6 +50,7 @@ extern "C" {
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "sensor_msgs/msg/range.hpp"
+#include "sensor_msgs/msg/magnetic_field.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/int32.hpp"
 #include "tf2_ros/static_transform_broadcaster.h"
@@ -129,6 +132,7 @@ public:
     mTofInitStatus = tofInit(12, 0x29, 1);
     if (!mTofInitStatus)
       RCLCPP_WARN(get_logger(), "ToF device is not accessible!");
+    initMagnetometer();
 
     // Initialize the values
     std::fill(mMsgActuators, mMsgActuators + MSG_ACTUATORS_SIZE, 0);
@@ -159,6 +163,7 @@ public:
     }
     mRangeTofPublisher = create_publisher<sensor_msgs::msg::Range>("tof", 1);
     mImuPublisher = create_publisher<sensor_msgs::msg::Imu>("imu", 1);
+    mMagPublisher = create_publisher<sensor_msgs::msg::MagneticField>("mag", 1);
     mTimer = create_wall_timer(std::chrono::milliseconds(PERIOD_MS), std::bind(&EPuckDriver::updateCallback, this));
 
     // Dynamic tf broadcaster: Odometry
@@ -538,6 +543,29 @@ private:
     mDynamicBroadcaster->sendTransform(tf);
   }
 
+  void publishMagnetometerData() {
+    int8_t rslt;
+    struct bmm150_mag_data mag_data;
+    auto msg = sensor_msgs::msg::MagneticField();
+
+    /* Get the interrupt status */
+    rslt = bmm150_get_interrupt_status(&mDevMag);
+
+    if (mDevMag.int_status & BMM150_INT_ASSERTED_DRDY) {
+      /* Read mag data */
+      rslt = bmm150_read_mag_data(&mag_data, &mDevMag);
+
+      /* Unit for magnetometer data is microtesla(uT) */
+      //RCLCPP_INFO(get_logger(), "X : %d uT   Y : %d uT   Z : %d uT\r\n", mag_data.x, mag_data.y, mag_data.z);
+
+      msg.header.stamp = now();
+      msg.magnetic_field.x = mag_data.x/1000000.0;
+      msg.magnetic_field.y = mag_data.y/1000000.0;
+      msg.magnetic_field.z = mag_data.z/1000000.0;
+      mMagPublisher->publish(msg);      
+    }
+  }
+
   void updateCallback() {
     int success;
     int retryCount;
@@ -583,6 +611,44 @@ private:
 
     publishImuData();
     publishGroundSensorData();
+    publishMagnetometerData();
+  }
+
+  void initMagnetometer() {
+    /* Status of api are returned to this variable */
+    int8_t rslt;
+    struct bmm150_settings settings;
+
+    rslt = bmm150_interface_selection(&mDevMag);
+    bmm150_error_codes_print_result("bmm150_interface_selection", rslt);
+
+    if (rslt == BMM150_OK) {
+      rslt = bmm150_init(&mDevMag);
+      bmm150_error_codes_print_result("bmm150_init", rslt);
+
+      if (rslt == BMM150_OK) {
+        /* Set powermode as normal mode */
+        settings.pwr_mode = BMM150_POWERMODE_NORMAL;
+        rslt = bmm150_set_op_mode(&settings, &mDevMag);
+        bmm150_error_codes_print_result("bmm150_set_op_mode", rslt);
+
+        if (rslt == BMM150_OK) {
+          /* Setting the preset mode as Low power mode
+           * i.e. data rate = 10Hz, XY-rep = 1, Z-rep = 2
+           */
+          settings.preset_mode = BMM150_PRESETMODE_LOWPOWER;
+          rslt = bmm150_set_presetmode(&settings, &mDevMag);
+          bmm150_error_codes_print_result("bmm150_set_presetmode", rslt);
+
+          if (rslt == BMM150_OK) {
+            /* Map the data interrupt pin */
+            settings.int_settings.drdy_pin_en = 0x01;
+            rslt = bmm150_set_sensor_settings(BMM150_SEL_DRDY_PIN_EN, &settings, &mDevMag);
+            bmm150_error_codes_print_result("bmm150_set_sensor_settings", rslt);
+          }
+        }
+      }
+    }
   }
 
   OnSetParametersCallbackHandle::SharedPtr mCallbackHandler;
@@ -598,6 +664,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr mTwistSubscription;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr mRgbLedSubscription[NB_RGB_LEDS];
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr mLedSubscription[NB_BINARY_LEDS];
+  rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mMagPublisher;
 
   std::unique_ptr<tf2_ros::StaticTransformBroadcaster> mLaserBroadcaster;
   std::unique_ptr<tf2_ros::TransformBroadcaster> mDynamicBroadcaster;
@@ -626,6 +693,8 @@ private:
   float mWheelRadius;
 
   int mTofInitStatus;
+
+  struct bmm150_dev mDevMag;
 };
 
 int main(int argc, char *argv[]) {
