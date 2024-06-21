@@ -25,11 +25,13 @@ from launch_ros.actions import Node
 def generate_launch_description():
     use_camera = LaunchConfiguration('camera', default=False)
     use_uwb = LaunchConfiguration('uwb', default=False)
+    use_ground = LaunchConfiguration('ground_enabled', default=False)
 
     driver = Node(
         package='epuck_ros2_driver',
         executable='driver',
-        output='screen'
+        output='screen',
+        parameters=[{"ground_enabled": use_ground}]
     )
     camera = Node(
         package='epuck_ros2_camera',

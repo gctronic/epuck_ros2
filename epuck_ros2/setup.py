@@ -5,7 +5,6 @@ data_files = []
 data_files.append(
     ('share/ament_index/resource_index/packages', ['resource/' + package_name]))
 data_files.append(('share/' + package_name, ['launch/robot_launch.py']))
-data_files.append(('share/' + package_name, ['launch/robot_launch.xml']))
 data_files.append(('share/' + package_name, ['package.xml']))
 
 setup(
@@ -33,6 +32,7 @@ setup(
         'console_scripts': [
             'epuck2_driver = epuck_ros2.epuck2_driver:main',
             'camera_calibration = epuck_ros2.camera_calibration:main'
+            'uwb_publisher = epuck_ros2.uwb_publisher:main'
         ],
     }
 )

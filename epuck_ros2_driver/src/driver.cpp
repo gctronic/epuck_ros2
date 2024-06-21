@@ -119,6 +119,7 @@ public:
 
     mWheelDistance = declare_parameter<float>("wheel_distance", DEFAULT_WHEEL_DISTANCE);
     mWheelRadius = declare_parameter<float>("wheel_radius", DEFAULT_WHEEL_RADIUS);
+    mGroundEnabled = declare_parameter("ground_enabled", false);
     mCallbackHandler =
       add_on_set_parameters_callback(std::bind(&EPuckDriver::paramChangeCallback, this, std::placeholders::_1));
 
@@ -154,8 +155,10 @@ public:
       mLedSubscription[i] = create_subscription<std_msgs::msg::Bool>("/led" + std::to_string(i * 2), 1, f);
     }
     mLaserPublisher = create_publisher<sensor_msgs::msg::LaserScan>("scan", 1);
-    for (int i = 0; i < NB_GROUND_SENSORS; i++)
-      mGroundRangePublisher[i] = create_publisher<sensor_msgs::msg::Range>("/gs" + std::to_string(i), 1);
+    if(mGroundEnabled) {
+      for (int i = 0; i < NB_GROUND_SENSORS; i++)
+        mGroundRangePublisher[i] = create_publisher<sensor_msgs::msg::Range>("/gs" + std::to_string(i), 1);
+    }    
     mOdometryPublisher = create_publisher<nav_msgs::msg::Odometry>("odom", 1);
     for (int i = 0; i < NB_INFRARED_SENSORS; i++) {
       mRangePublisher[i] = create_publisher<sensor_msgs::msg::Range>("ps" + std::to_string(i), 1);
@@ -210,18 +213,20 @@ public:
       mLightSensorBroadcasters[i]->sendTransform(lightTransform);
     }
 
-    // Static tf broadcaster: Range (ground sensors)
-    for (int i = 0; i < NB_GROUND_SENSORS; i++) {
-      mGroundBroadcasters[i] = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
-      geometry_msgs::msg::TransformStamped groundTransform;
-      groundTransform.header.stamp = now();
-      groundTransform.header.frame_id = "base_link";
-      groundTransform.child_frame_id = "gs" + std::to_string(i);
-      groundTransform.transform.rotation = EPuckDriver::euler2quaternion(0, 0, DISTANCE_SENSOR_ANGLE[i]);
-      groundTransform.transform.translation.x = SENSOR_DIST_FROM_CENTER - 0.005;
-      groundTransform.transform.translation.y = 0.009 - i * 0.009;
-      groundTransform.transform.translation.z = 0;
-      mGroundBroadcasters[i]->sendTransform(groundTransform);
+    if(mGroundEnabled) {
+      // Static tf broadcaster: Range (ground sensors)
+      for (int i = 0; i < NB_GROUND_SENSORS; i++) {
+        mGroundBroadcasters[i] = std::make_unique<tf2_ros::StaticTransformBroadcaster>(this);
+        geometry_msgs::msg::TransformStamped groundTransform;
+        groundTransform.header.stamp = now();
+        groundTransform.header.frame_id = "base_link";
+        groundTransform.child_frame_id = "gs" + std::to_string(i);
+        groundTransform.transform.rotation = EPuckDriver::euler2quaternion(0, 0, DISTANCE_SENSOR_ANGLE[i]);
+        groundTransform.transform.translation.x = SENSOR_DIST_FROM_CENTER - 0.005;
+        groundTransform.transform.translation.y = 0.009 - i * 0.009;
+        groundTransform.transform.translation.z = 0;
+        mGroundBroadcasters[i]->sendTransform(groundTransform);
+      }
     }
 
     // Static tf broadcaster: Range (ToF)
@@ -250,6 +255,7 @@ private:
       mMsgActuators[MSG_ACTUATORS_BIN_LEDS_INDEX] &= ~(1 << index);
   }
   void onRgbLedReceived(const std_msgs::msg::Int32::SharedPtr msg, int index) {
+    //RCLCPP_INFO(get_logger(), "New RGB: %d", msg->data);
     mMsgActuators[MSG_ACTUATORS_RGB_LEDS_INDEX + index * 3] = ((msg->data >> 16) & 0xFF) / 2.55;
     mMsgActuators[MSG_ACTUATORS_RGB_LEDS_INDEX + index * 3 + 1] = ((msg->data >> 8) & 0xFF) / 2.55;
     mMsgActuators[MSG_ACTUATORS_RGB_LEDS_INDEX + index * 3 + 2] = (msg->data & 0xFF) / 2.55;
@@ -295,6 +301,8 @@ private:
   }
 
   void onCmdVelReceived(const geometry_msgs::msg::Twist::SharedPtr msg) {
+    //auto start = std::chrono::high_resolution_clock::now();
+
     const double leftVelocity = (2.0 * msg->linear.x - msg->angular.z * mWheelDistance) / (2.0 * mWheelRadius);
     const double rightVelocity = (2.0 * msg->linear.x + msg->angular.z * mWheelDistance) / (2.0 * mWheelRadius);
 
@@ -307,6 +315,10 @@ private:
     mMsgActuators[MSG_ACTUATORS_MOTORS_INDEX + 1] = (leftVelocityBig >> 8) & 0xFF;
     mMsgActuators[MSG_ACTUATORS_MOTORS_INDEX + 2] = rightVelocityBig & 0xFF;
     mMsgActuators[MSG_ACTUATORS_MOTORS_INDEX + 3] = (rightVelocityBig >> 8) & 0xFF;
+
+    //auto stop = std::chrono::high_resolution_clock::now();
+    //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    //std::cout << "onCmdVelReceived duration = " << duration.count() << " us" << std::endl;    
   }
 
   void publishImuData() {
@@ -567,6 +579,7 @@ private:
   }
 
   void updateCallback() {
+    //auto start = std::chrono::high_resolution_clock::now();
     int success;
     int retryCount;
     rclcpp::Time stamp;
@@ -578,6 +591,8 @@ private:
       success = mI2cMain->setAddress(0x1F);
       retryCount--;
     }
+
+    //RCLCPP_INFO(get_logger(), "setAddress %d\r\n", success);
 
     // I2C: Write/Read
     retryCount = 3;
@@ -599,6 +614,8 @@ private:
       retryCount--;
     }
 
+    //RCLCPP_INFO(get_logger(), "writeData %d\r\n", success);
+
     stamp = now();
 
     if (success) {
@@ -610,8 +627,14 @@ private:
       mI2cMainErrCnt++;
 
     publishImuData();
-    publishGroundSensorData();
+    if(mGroundEnabled) {
+      publishGroundSensorData();
+    }
     publishMagnetometerData();
+
+    //auto stop = std::chrono::high_resolution_clock::now();
+    //auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    //std::cout << "duration = " << duration.count() << std::endl;
   }
 
   void initMagnetometer() {
@@ -695,11 +718,14 @@ private:
   int mTofInitStatus;
 
   struct bmm150_dev mDevMag;
+
+  bool mGroundEnabled;
 };
 
 int main(int argc, char *argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<EPuckDriver>(argc, argv));
   rclcpp::shutdown();
+  //printf("SHUTDOWN!!!!\r\n");
   return 0;
 }
